@@ -7,7 +7,7 @@ logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(
 logger = logging.getLogger(__name__)
 
 # API KEYS
-GEMINI_API_KEY = "AIzaSyBjOwLujWyH-EFpQUgnxtX604wZmzRthAo"
+GEMINI_API_KEY = "add_your_gemini_api_key_here"
 
 # MODEL NAMES
 GEMINI_MODEL = "gemma-3-27b-it"
@@ -49,13 +49,14 @@ gemini_model = genai.GenerativeModel(GEMINI_MODEL)
 def call_gemini(prompt, system_prompt=None, temperature=0.7):
     """Call Gemini API with enhanced configuration"""
     try:
-        messages = []
+        # Combine system prompt and user prompt
+        full_prompt = ""
         if system_prompt:
-            messages.append({"role": "system", "content": system_prompt})
-        messages.append({"role": "user", "content": prompt})
+            full_prompt += f"{system_prompt}\n\n"
+        full_prompt += prompt
         
         response = gemini_model.generate_content(
-            messages,
+            full_prompt,
             generation_config=genai.types.GenerationConfig(
                 temperature=temperature,
                 max_output_tokens=2048
@@ -112,8 +113,6 @@ def call_llm(prompt, system_prompt=None, model=None, temperature=0.7):
     if model is None:
         model = DEFAULT_MODEL
     
-    logger.info(f"Calling LLM: {model}")
-    
     try:
         if model == "gemini":
             return call_gemini(prompt, system_prompt, temperature)
@@ -132,7 +131,6 @@ def call_llm(prompt, system_prompt=None, model=None, temperature=0.7):
         
         for fallback in fallback_models:
             try:
-                logger.info(f"Falling back to model: {fallback}")
                 if fallback == "gemini":
                     return call_gemini(prompt, system_prompt, temperature)
                 elif fallback == "openai":
