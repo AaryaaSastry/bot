@@ -1,4 +1,4 @@
-from config import call_gemini
+from config import call_llm, SYSTEM_PROMPTS
 
 
 def verify_questions(state):
@@ -35,7 +35,7 @@ SUGGESTED QUESTIONS:
 Return ONLY this structured evaluation.
 """
 
-    return call_gemini(prompt)
+    return call_llm(prompt, SYSTEM_PROMPTS["validator"])
 
 
 def create_final_summary(state):
@@ -77,4 +77,4 @@ What the patient should do next (medical consultation, emergency care, etc).
 Return ONLY the structured report.
 """
 
-    return call_gemini(prompt)
+    return call_llm(prompt, SYSTEM_PROMPTS["validator"])

@@ -1,4 +1,4 @@
-from config import call_gemini
+from config import call_llm, SYSTEM_PROMPTS
 
 class DiagnosticState:
 
@@ -66,7 +66,7 @@ class DiagnosticState:
         Text: {text}
         """
 
-        response = call_gemini(prompt)
+        response = call_llm(prompt, SYSTEM_PROMPTS["symptom_extractor"])
         symptoms = response.strip().split('\n')
 
         for symptom in symptoms:

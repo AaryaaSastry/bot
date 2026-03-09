@@ -1,4 +1,6 @@
-from config import call_gemini
+#static code- will need this for agent 4 integration 
+
+from config import call_llm, SYSTEM_PROMPTS
 
 
 def generate_diagnosis(state):
@@ -19,6 +21,6 @@ def generate_diagnosis(state):
     - Short explanation
     """
 
-    diagnosis = call_gemini(prompt)
+    diagnosis = call_llm(prompt, SYSTEM_PROMPTS["supervisor"])
 
     return diagnosis
