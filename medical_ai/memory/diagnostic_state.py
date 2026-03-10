@@ -8,6 +8,7 @@ class DiagnosticState:
         self.question_history = []
         self.answers = []
         self.turn_count = 0
+        self.question_count = 0
         self.chat_history = []  # Maintains complete conversation thread
         self.verification_feedbacks = [] # Store feedback from Agent 2
         self.cycle_count = 0 # Track transfers between Agent 1 and Agent 2
