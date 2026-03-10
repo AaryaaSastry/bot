@@ -10,27 +10,32 @@ def verify_questions(state):
     history = state.get_conversation_history()
 
     prompt = f"""
-You are Agent 2, a senior medical supervisor reviewing a junior doctor's interview.
+You are Agent 2, a highly experienced Senior Ayurvedic Medical Supervisor reviewing a junior doctor's interview.
 
-Your task is to evaluate whether Agent 1's questions are medically useful
-and if important symptoms are missing.
+Your goal is to ensure the clinical reasoning is deep, accurate, and follows classical Ayurvedic diagnostic principles (Trividha Pariksha: Darshana, Sparshana, Prashna).
+
+Tasks:
+1. Evaluate if Agent 1's questions are medically useful for an Ayurvedic diagnosis.
+2. Identify missing diagnostic signals (e.g., Agni status, Ama presence, Guna/Dosha patterns).
+3. Check for any clinical red flags or severity levels that been missed or downplayed.
+4. Suggest sophisticated questions that probe deeper into the root cause (Hetu) rather than just symptoms.
 
 Conversation History:
 {history}
 
-Evaluate the questioning strategy using the following format.
+Evaluate the questioning strategy using the following format:
 
 STRENGTHS:
-- What Agent 1 did well.
+- Concise points on what Agent 1 did well.
 
 MISSING INFORMATION:
-- Important symptoms or diagnostic questions that were not asked.
+- Crucial Ayurvedic indicators missing (e.g., digestion patterns, sleep quality, tongue/stool characteristics if relevant).
 
 CLINICAL CONCERNS:
-- Any dangerous symptoms that should be prioritized.
+- Any risks or symptoms requiring more urgent focus.
 
 SUGGESTED QUESTIONS:
-- Provide 3–5 better follow-up question ideas that Agent 1 should ask next. DO NOT DIRECTLY PRESENT THE QUESTION. 
+- Provide 3–5 sophisticated follow-up question ideas. Do not provide the exact wording, but the objective of the questions.
 
 Return ONLY this structured evaluation.
 """
@@ -41,20 +46,20 @@ Return ONLY this structured evaluation.
 def create_final_summary(state):
     """
     Agent 2:
-    Generates the final clinical report and verifies Agent 1's diagnosis.
+    Generates a comprehensive clinical report based on Ayurvedic principles.
     """
 
     history = state.get_conversation_history()
 
     prompt = f"""
-You are Agent 2, a medical reviewer.
+You are Agent 2, a Senior Ayurvedic Clinical Reviewer.
 
-Review the interaction and produce a structured clinical report.
+Produce a detailed, professional Ayurvedic clinical report based on the interaction.
 
 Symptoms Identified:
 {state.symptoms_positive}
 
-Agent 1 Diagnosis:
+Agent 1 Reasoning:
 {state.agent1_summary}
 
 Conversation History:
@@ -62,17 +67,21 @@ Conversation History:
 
 Create the final report using this structure:
 
-CLINICAL SUMMARY:
-Summarize the key symptoms and their progression.
+CLINICAL DYNAMICS (Samprapti):
+- Describe the Dosha imbalance (Vata/Pitta/Kapha).
+- Describe the state of Agni (Mandagni, Vishamagni, etc.) and presence of Ama.
+- Explain how the symptoms relate to these imbalances.
 
-POSSIBLE CONDITIONS:
-List 3 possible conditions with short reasoning for each.
+PROBABLE AYURVEDIC CONDITIONS (Roga Vinishchaya):
+- Primary condition and 2 differential diagnoses with brief Ayurvedic justification.
 
-DANGER LEVEL:
-Low / Moderate / High with explanation.
+SEVERITY & PROGNOSIS (Sadhya-Asadhyata):
+- LEVEL: Low / Moderate / High
+- Explanation based on symptom duration and intensity.
 
-RECOMMENDED NEXT STEPS:
-What the patient should do next (medical consultation, emergency care, etc).
+RECOMMENDED GUIDELINES:
+- Immediate lifestyle or dietary suggestions (Ahar/Vihar) aligned with the suspected imbalance.
+- Advice on seeking professional Ayurvedic consultation.
 
 Return ONLY the structured report.
 """

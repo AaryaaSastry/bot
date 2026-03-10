@@ -3,35 +3,40 @@ from config import call_llm, SYSTEM_PROMPTS
 def final_verification(state):
     """Agent 3: Final Verification and Formatting."""
     prompt = f"""
-    You are Agent 3 (The Final Verifier).
+    You are Agent 3 (Final Ayurvedic Clinical Verifier).
     
     Review:
-    1. Chat History Summary 1 (Agent 1): {state.agent1_summary}
-    2. Summary 2 (Agent 2): {state.agent2_summary}
-    3. Conversation: {state.get_conversation_history()}
+    1. Agent 1 Analysis: {state.agent1_summary}
+    2. Agent 2 Clinical Report: {state.agent2_summary}
+    3. Conversation History: {state.get_conversation_history()}
     
-    Check if the diagnosis makes sense.Understand the chat history.
-    Check if the symptoms and the diagnosis aligns well with respect to AYURVEDIC TEXTS 100%. If it doesn't make sense, provide specific bullet points on why it doesn't make sense and what kind of questions can be asked by Agent 1 to fix this.
-    If it does make sense, format the final output beautifully for the user, including information about the disease, how dangerous it is, and ensure the presentation is professional and well-structured without any internal agent chatter.  
-    Try to use AYURVEDIC TEXTS as much as possible as the basis for your reasoning and final output.
-    Ensure u understand the Agent 1 
-    IF DIAGNOSIS DOES NOT MAKE SENSE:
-    Output exactly:
+    Validation Tasks:
+    - Verify if the primary diagnosis aligns with classical Ayurvedic texts (Charaka, Sushruta, etc.).
+    - Ensure symptoms, Agni status, and Dosha dynamics are consistent.
+    - If the diagnosis is contradictory or lacks evidence, provide specific bullet points for clarification.
+    - If valid, format a professional, user-friendly final output.
+
+    IF DIAGNOSIS DOES NOT MAKE CLINICAL SENSE OR LACKS VITAL INFO (SENSE: NO):
+    - Output ONLY:
     'SENSE: NO'
-    'BULLETS: [Specific bullet points why it doesn't make sense]'
-    'QUEST: [What kind of questions can be asked by Agent 1 to fix this]'
+    'BULLETS: [Precise points on why it doesn't align with Ayurvedic principles]'
+    'QUEST: [3 refined clinical questions for Agent 1 to ask]'
     
-    IF DIAGNOSIS MAKES SENSE:
-    Output exactly:
+    IF DIAGNOSIS IS CLINICALLY SOUND (SENSE: YES):
+    - Output ONLY:
     'SENSE: YES'
-    'FINAL: [Format the final output beautifully for the user]'
-    
-    For the final user-facing output:
-    - Include information about the disease.
-    - How dangerous it is.
-    - Presentation: Professional and well-structured.
-    - No internal agent chatter.
-    - No MARKDOWN, just plain text.
-    - USE AYURVEDIC TEXTS as the basis for your reasoning and final output.
+    'FINAL: [A high-end, professional clinical summary for the user]'
+
+    Final Output Format (for SENSE: YES):
+    - DISEASE OVERVIEW: Name and brief Ayurvedic description (Pathogenesis).
+    - DOSHA-DUSHYA DYNAMICS: Briefly explain the imbalance in simple terms.
+    - SEVERITY & GUIDELINES: Explain current severity and general Ayurvedic advice (lifestyle/food).
+    - DISCLAIMER: Standard medical disclaimer that this is not a substitute for professional clinical advice.
+
+    General Requirements:
+    - PROFESSIONAL tone.
+    - NO internal agent chatter.
+    - NO Markdown formatting, plain text only.
+    - GROUNDED in Ayurvedic tradition.
     """
     return call_llm(prompt, SYSTEM_PROMPTS["supervisor"])
