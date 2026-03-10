@@ -1,11 +1,55 @@
 from config import call_llm, SYSTEM_PROMPTS
 
+                
+def is_health_related(user_input):
+    """Check if user input is related to health/medical symptoms"""
+    
+    prompt = f"""
+You are a medical domain classifier. Your task is to determine if the user's input is related to health, medical symptoms, or Ayurvedic diagnostics.
+
+User input: "{user_input}"
+
+Determine if this input is:
+- HEALTH-RELATED: The user is describing symptoms, medical conditions, body issues, pain, discomfort, or asking health-related questions
+- NOT HEALTH-RELATED: The user is asking about unrelated topics like objects, general knowledge, math, weather, animals (unless medically relevant), hobbies, etc.
+
+Examples of NOT HEALTH-RELATED inputs:
+- "What is a pencil?" - asking about an object
+- "What's the weather today?" - asking about weather
+- "Tell me about history" - asking about general knowledge
+- "How do I fix my computer?" - technical question
+- "What is 2+2?" - math question
+- "Tell me about cars" - general topic
+
+Examples of HEALTH-RELATED inputs:
+- "I have a headache" - describing symptom
+- "My stomach hurts" - describing symptom
+- "I feel tired all the time" - describing symptom
+- "What causes fever?" - medical question
+- "I have back pain" - describing symptom
+
+Respond with ONLY one word: HEALTHY or NOT_HEALTHY
+"""
+    
+    result = call_llm(prompt, SYSTEM_PROMPTS.get("symptom_extractor", ""), temperature=0.3).strip().upper()
+    return "HEALTHY" in result
+
+
+def get_domain_redirect_response():
+    """Return a polite response asking user to discuss only health problems"""
+    return "I appreciate your question, but I'm specifically designed to help with health-related concerns and medical symptoms. Please tell me about any health problems or symptoms you're experiencing, and I'll be happy to assist you from an Ayurvedic perspective."
+
 
 def ask_question(state):
     """Agent 1: Professional Medical Interviewer"""
 
     # Phase 1: If diagnosis was rejected, ask clarification yes/no questions
     if getattr(state, "extra_questions_asked", False):
+        
+        # Check if user input is health-related
+        user_input = state.answers[-1] if state.answers else ""
+        if user_input and not is_health_related(user_input):
+            return get_domain_redirect_response()
 
         prompt = f"""
 You are Agent 1, a skilled, mindful,  ayurvedic medical interviewer.
@@ -30,6 +74,11 @@ Return ONLY the question.
 
     # Second turn → determine if user provided symptoms
     if state.turn_count == 1:
+        
+        # Check if user input is health-related
+        user_input = state.answers[-1] if state.answers else ""
+        if user_input and not is_health_related(user_input):
+            return get_domain_redirect_response()
 
         prompt = f"""
 You are Agent 1 (Medical Interviewer).
@@ -42,6 +91,7 @@ Conversation History:
 BASE RULE:
     - You are an ayurvedic medical interviewer, not a general chatbot. Always steer the conversation towards understanding the user's medical symptoms and concerns.
     - You need to understand the user properly like an experienced ayurvedic doctor, and not just list the symptoms. You need to take decent analysis of the symptoms and their patterns, and not just list them.
+    - If the user asks about specific medications like paracetamol or any non-ayurvedic treatments, inform them that you can't advise on that as it is outside your ayurvedic expertise. Redirect them to describe their symptoms so you can help them from an ayurvedic perspective.
 
 If the user only greeted you (like "hi", "hello"), politely ask them to describe their medical symptoms.
 Greet the user if they greeted you, but also ask them to describe their symptoms. For example, you could say "Hello! I'm here to help you with your medical concerns. Could you please describe the symptoms you're experiencing?"
@@ -55,6 +105,11 @@ Return ONLY the question.
         return call_llm(prompt, SYSTEM_PROMPTS["interviewer"]).strip()
 
     # Later turns → follow-up questions
+    # Check if user input is health-related
+    user_input = state.answers[-1] if state.answers else ""
+    if user_input and not is_health_related(user_input):
+        return get_domain_redirect_response()
+
     feedback_context = ""
     feedbacks = getattr(state, "verification_feedbacks", [])
 
@@ -75,6 +130,7 @@ Conversation History:
 
 Your task:
 - Ask ONE new medical question that has NOT already been asked that aligns with the ayurvedic diagnostic approach and the chat history.
+- If the user has asked about non-Ayurvedic medications or treatments (for example, Paracetamol), politely inform them that you are an Ayurvedic diagnostic assistant and can only help with symptoms, then redirect the conversation to their symptoms.
 - Avoid repeating previous questions.
 - Focus on clarifying symptoms or identifying related symptoms.
 - Be kind and empathetic in your questioning, but maintain a professional tone.

@@ -13,6 +13,8 @@ def final_verification(state):
     Check if the diagnosis makes sense.Understand the chat history.
     Check if the symptoms and the diagnosis aligns well with respect to AYURVEDIC TEXTS 100%. If it doesn't make sense, provide specific bullet points on why it doesn't make sense and what kind of questions can be asked by Agent 1 to fix this.
     If it does make sense, format the final output beautifully for the user, including information about the disease, how dangerous it is, and ensure the presentation is professional and well-structured without any internal agent chatter.  
+    Try to use AYURVEDIC TEXTS as much as possible as the basis for your reasoning and final output.
+    Ensure u understand the Agent 1 
     IF DIAGNOSIS DOES NOT MAKE SENSE:
     Output exactly:
     'SENSE: NO'
