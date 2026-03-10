@@ -7,7 +7,7 @@ logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(
 logger = logging.getLogger(__name__)
 
 # API KEYS
-GEMINI_API_KEY = "add_your_gemini_api_key_here"
+GEMINI_API_KEY = ""
 
 # MODEL NAMES
 GEMINI_MODEL = "gemma-3-27b-it"
