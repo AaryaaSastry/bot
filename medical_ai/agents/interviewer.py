@@ -1,12 +1,11 @@
-
-from config import call_llm, SYSTEM_PROMPTS
+﻿from config import call_llm, SYSTEM_PROMPTS
 from medical_ai.medical_framework import (
     RedFlagDetector, SymptomScorer, ProbabilisticDiagnosis,
     ConfidenceCalculator, DiagnosisRefusal, TwoPhaseSystem
 )
 from medical_ai.memory.diagnostic_state import DiagnosticState
 
-                
+
 def is_health_related(user_input):
     """Check if user input is related to health/medical symptoms"""
     
@@ -52,94 +51,130 @@ def ask_question(state):
 
     # Phase 1: If diagnosis was rejected, ask clarification yes/no questions
     if getattr(state, "extra_questions_asked", False):
-        
-        # Check if user input is health-related
         user_input = state.answers[-1] if state.answers else ""
         if user_input and not is_health_related(user_input):
             return get_domain_redirect_response()
 
         prompt = f"""
-You are Agent 1, a skilled Ayurvedic medical interviewer.
+You are Agent 1, a professional Ayurvedic medical interviewer.
 
-CRITICAL: Keep questions VERY SHORT (max 10 words).
-A previous diagnosis was rejected and you must clarify symptoms.
+GOAL:
+Collect accurate clinical information needed for diagnosis.
 
-Conversation History:
+REASONING INSTRUCTION:
+Analyze the symptoms, OPQRST information, and conversation history carefully.
+Internally reason step-by-step before producing the final answer.
+Do NOT output the reasoning steps. Only return the requested structured output.
+
+CRITICAL RULE:
+Use ONLY the structured data below.
+Do NOT extract symptoms from conversation history.
+Do NOT reinterpret answers.
+
+Structured Data:
+Onset: {state.collected_fields.get('onset','unknown')}
+Provocation: {state.collected_fields.get('provocation','unknown')}
+Quality: {state.collected_fields.get('quality','unknown')}
+Region: {state.collected_fields.get('region','unknown')}
+Severity: {state.collected_fields.get('severity','unknown')}
+Time: {state.collected_fields.get('time','unknown')}
+
+Additional Symptoms:
+{state.symptoms_positive}
+
+RULES:
+- Ask only ONE question at a time
+- Avoid repeating questions
+- Prefer short clear questions
+- Focus on missing diagnostic information
+- Use a mix of YES/NO and short open questions
+STRICT CLINICAL RULES:
+1. Never invent symptoms
+2. If the patient denies a symptom, exclude it
+3. Use only explicitly stated symptoms
+4. Do not reinterpret answers
+5. Use ONLY the structured data below; do NOT extract new info from conversation history.
+
+PRIORITY INFORMATION:
+1. Location of symptoms
+2. Severity
+3. Duration
+4. Triggers
+5. Associated symptoms
+
+Known symptoms:
+{state.symptoms_positive}
+
+Conversation history:
 {state.get_conversation_history()}
 
-Ask ONE clear YES/NO question (SHORT).
+TASK:
+Ask the most useful next question to improve diagnosis accuracy.
+
 Return ONLY the question.
 """
         return call_llm(prompt, SYSTEM_PROMPTS["interviewer"]).strip()
 
-    # First turn → greeting
+    # First turn -> greeting
     if state.turn_count == 0:
         return "Hello! I'm here to help you with your medical concerns. Could you please describe the symptoms you're experiencing?"
 
-    # Second turn → determine if user provided symptoms
-    if state.turn_count == 1:
-        
-        # Check if user input is health-related
-        user_input = state.answers[-1] if state.answers else ""
-        if user_input and not is_health_related(user_input):
-            return get_domain_redirect_response()
-
-        prompt = f"""
-You are Agent 1 (Ayurvedic Medical Interviewer).
-
-CRITICAL: Keep questions VERY SHORT (max 10 words).
-
-User response:
-{state.answers[-1]}
-
-Conversation History:
-{state.get_conversation_history()}
-
-BASE RULE:
-- Keep questions short and simple
-- Ask one question at a time
-- If user greeted you, greet back and ask about symptoms
-- If they mentioned symptoms, ask ONE short follow-up
-
-Return ONLY the question.
-"""
-        return call_llm(prompt, SYSTEM_PROMPTS["interviewer"]).strip()
-
-    # Later turns → follow-up questions
-    # Check if user input is health-related
+    # For all subsequent turns, ensure input is health-related
     user_input = state.answers[-1] if state.answers else ""
     if user_input and not is_health_related(user_input):
         return get_domain_redirect_response()
 
     feedback_context = ""
     feedbacks = getattr(state, "verification_feedbacks", [])
-
     if feedbacks:
         latest = feedbacks[-1]
-        feedback_context = f"Supervisor feedback from Agent 2:\n{latest}"
+        feedback_context = f"Supervisor feedback from Agent 2:\n{latest}\n"
 
     prompt = f"""
-You are Agent 1, an ayurvedic medical interviewer gathering diagnostic information.
+You are Agent 1, a professional Ayurvedic medical interviewer.
 
-CRITICAL RULES:
-1. Keep questions VERY SHORT (max 15-18 words)
-2. Avoid medical jargon
-3. Ask one question at a time only
-4. Mix yes/no with occasional open questions
+GOAL:
+Collect accurate clinical information needed for diagnosis.
 
-Known symptoms so far:
+REASONING INSTRUCTION:
+Analyze the symptoms, OPQRST information, and conversation history carefully.
+Internally reason step-by-step before producing the final answer.
+Do NOT output the reasoning steps. Only return the requested structured output.
+
+RULES:
+- Ask only ONE question at a time
+- Avoid repeating questions
+- Prefer short clear questions
+- Focus on missing diagnostic information
+- Use a mix of YES/NO and short open questions
+STRICT CLINICAL RULES:
+1. Never invent symptoms
+2. If the patient denies a symptom, exclude it
+3. Use only explicitly stated symptoms
+4. Do not reinterpret answers
+
+PRIORITY INFORMATION:
+1. Location of symptoms
+2. Severity
+3. Duration
+4. Triggers
+5. Associated symptoms
+
+Known symptoms:
 {state.symptoms_positive}
 
-Conversation History:
+STRUCTURED DATA (use exact values, do not change):
+Severity: {state.collected_fields.get('severity','unknown')}
+Region: {state.collected_fields.get('region','unknown')}
+Quality: {state.collected_fields.get('quality','unknown')}
+Provocation: {state.collected_fields.get('provocation','unknown')}
+Time: {state.collected_fields.get('time','unknown')}
+
+Conversation history:
 {state.get_conversation_history()}
 
-{feedback_context}
-
-Your task:
-- Ask ONE new question (SHORT, max 15-18 words)
-- Never repeat previous questions
-- Focus on: location, severity, duration, triggers
-- 20% of the time, ask an open question like "Can you describe more?"
+{feedback_context}TASK:
+Ask the most useful next question to improve diagnosis accuracy.
 
 Return ONLY the question.
 """
@@ -161,55 +196,90 @@ def generate_simple_diagnosis(state):
     symptom_category = TwoPhaseSystem.get_symptom_category(state.symptoms_positive)
     required_fields = TwoPhaseSystem.MINIMUM_FIELDS.get(symptom_category, ["onset", "severity"])
     collected_fields = {}
-    # Estimate from conversation
     data_completeness = min(len(state.symptoms_positive) / len(required_fields), 1.0) if required_fields else 0
     
-    # Include OPQRST data in the prompt
     opqrst_context = state.get_opqrst_summary() if hasattr(state, 'get_opqrst_summary') else ""
     
-    # Check if we have enough data for a realistic diagnosis
     if data_completeness < 0.6 or len(state.symptoms_positive) < 2:
-        print("\n⚠️ Agent 1: I need more data to diagnose realistically. Continuing with more questions...\n")
+        print("\nWARNING: Agent 1 needs more data to diagnose realistically. Continuing with more questions...\n")
     
     prompt = f"""
-You are Agent 1, performing a preliminary medical analysis.
+You are Agent 1 performing preliminary Ayurvedic diagnostic reasoning.
 
-IMPORTANT: 
-- Generate DIFFERENTIAL DIAGNOSES (multiple possibilities with probabilities)
-- Calculate HONEST confidence based on information available.
+REASONING INSTRUCTION:
+Carefully analyze the symptoms and OPQRST information before generating diagnoses.
+CRITICAL RULE:
+Use ONLY the structured data below.
+Do NOT extract symptoms from conversation history.
+Do NOT reinterpret answers.
 
-Known symptoms:
+Use ONLY the structured data below.
+Do NOT extract new information from conversation history.
+
+KNOWN SYMPTOMS:
 {state.symptoms_positive}
 
+OPQRST INFORMATION:
 {opqrst_context}
 
-Dosha Analysis (Vata/Pitta/Kapha):
-- Vata score: {dosha_scores.get('vata', 0)}
-- Pitta score: {dosha_scores.get('pitta', 0)}
-- Kapha score: {dosha_scores.get('kapha', 0)}
-- Dominant: {dominant_dosha}
+Structured Data:
+Onset: {state.collected_fields.get('onset','unknown')}
+Provocation: {state.collected_fields.get('provocation','unknown')}
+Quality: {state.collected_fields.get('quality','unknown')}
+Region: {state.collected_fields.get('region','unknown')}
+Severity: {state.collected_fields.get('severity','unknown')}
+Time: {state.collected_fields.get('time','unknown')}
 
-Data Completeness: {int(data_completeness * 100)}%
+DOSHA SCORES:
+Vata: {dosha_scores.get('vata',0)}
+Pitta: {dosha_scores.get('pitta',0)}
+Kapha: {dosha_scores.get('kapha',0)}
 
-Conversation History:
-{state.get_conversation_history()}
+DATA COMPLETENESS:
+{int(data_completeness*100)}%
 
-BASE RULE:
-ALL DIAGNOSIS MUST BE BASED ON AYURVEDIC PRINCIPLES.
+STRUCTURED DATA (use exact values, do not change):
+Severity: {state.collected_fields.get('severity','unknown')}
+Region: {state.collected_fields.get('region','unknown')}
+Quality: {state.collected_fields.get('quality','unknown')}
+Provocation: {state.collected_fields.get('provocation','unknown')}
+Time: {state.collected_fields.get('time','unknown')}
 
-Output format:
+STRICT CLINICAL RULES:
+1. Never invent symptoms
+2. If the patient denies a symptom, exclude it
+3. Use only explicitly stated symptoms
+4. Do not reinterpret answers
+
+STRUCTURED REASONING STEPS:
+STEP 1: Summarize confirmed symptoms
+STEP 2: Identify symptom patterns
+STEP 3: Generate differential diagnoses
+STEP 4: Map to Ayurvedic dosha imbalance
+STEP 5: Produce confidence score
+
+TASK:
+Generate possible Ayurvedic conditions that best match the symptoms.
+
+RULES:
+- Only use conditions described in classical Ayurveda
+- Diagnosis must logically follow the symptoms
+- If data is incomplete, lower the confidence score
+- Provide differential diagnoses
+- First identify the biomedical symptom pattern, then map to Ayurvedic interpretation
+
+OUTPUT FORMAT:
+
 DIFFERENTIAL DIAGNOSES:
-1. [Condition name] - [probability]% - [brief reasoning]
-2. [Condition name] - [probability]% - [brief reasoning]
-3. [Condition name] - [probability]% - [brief reasoning]
+1. Condition - Probability% - reasoning
+2. Condition - Probability% - reasoning
+3. Condition - Probability% - reasoning
 
 DOSHA IMBALANCE:
 Explain the dominant dosha pattern
 
 CONFIDENCE SCORE:
-Provide a score (0-1) - MUST BE LOW if data is incomplete
-
-Return only this analysis.
+Number between 0.0 and 1.0
 """
 
     return call_llm(prompt, SYSTEM_PROMPTS["interviewer"])
@@ -246,3 +316,21 @@ def ask_opqrst_question(state):
         "question": question,
         "field": current_field
     }
+
+
+def ask_generated_yes_no_questions(state, questions):
+    """
+    Ask a list of YES/NO questions generated by Agent 2.
+    This is used when confidence is low and Agent 2 generates clarification questions.
+    Returns the number of questions answered.
+    """
+    
+    print(f"\n--- [Agent 1: Asking {len(questions)} Clarification Questions to Increase Confidence] ---\n")
+    
+    for i, question in enumerate(questions, 1):
+        print(f"Agent 1 (Q{i}/{len(questions)}): {question}")
+        answer = input("User (YES/NO): ").strip()
+        state.record_interaction(question, answer)
+    
+    print(f"\nCompleted {len(questions)} clarification questions.")
+    return len(questions)

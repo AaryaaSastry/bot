@@ -324,6 +324,44 @@ class ConfidenceCalculator:
         collected = sum(1 for f in required_fields if collected_fields.get(f) is not None)
         return collected / len(required_fields)
 
+    @staticmethod
+    def stable_confidence(state):
+        """
+        Deterministic confidence (0-1) using observable evidence only.
+        Buckets (0.20 each):
+        - OPQRST complete
+        - Trigger/provocation identified
+        - Symptom pattern match (>=2 symptoms)
+        - Agent 1 & Agent 2 produced summaries (agreement proxy)
+        - No contradictions flagged
+        """
+        score = 0.0
+
+        # OPQRST completeness
+        opqrst_fields = getattr(state, "OPQRST_FIELDS", ["onset", "provocation", "quality", "region", "severity", "time"])
+        filled = sum(1 for f in opqrst_fields if getattr(state, "collected_fields", {}).get(f))
+        if filled == len(opqrst_fields):
+            score += 0.20
+
+        # Trigger / provocation
+        if getattr(state, "collected_fields", {}).get("provocation"):
+            score += 0.20
+
+        # Symptom pattern (at least two symptoms)
+        if len(getattr(state, "symptoms_positive", [])) >= 2:
+            score += 0.20
+
+        # Agent summaries present (proxy for agreement)
+        if getattr(state, "agent1_summary", "") and getattr(state, "agent2_summary", ""):
+            score += 0.20
+
+        # No contradictions flagged
+        contradictions = getattr(state, "contradictions_found", False)
+        if not contradictions:
+            score += 0.20
+
+        return round(min(score, 1.0), 2)
+
 
 # ============================================================================
 # 7. KNOWLEDGE LAYER - Condition Rules

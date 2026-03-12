@@ -1,4 +1,4 @@
-from config import call_llm, SYSTEM_PROMPTS
+﻿from config import call_llm, SYSTEM_PROMPTS
 
 
 def verify_questions(state):
@@ -42,64 +42,171 @@ def create_final_summary(state):
     """
     Agent 2:
     Generates a comprehensive clinical report with differential diagnoses.
+    Returns both the summary and the confidence score.
     """
 
-    history = state.get_conversation_history()
-    
     # Get OPQRST summary if available
     opqrst_summary = state.get_opqrst_summary() if hasattr(state, 'get_opqrst_summary') else ""
 
     prompt = f"""
 You are Agent 2, a Senior Ayurvedic Clinical Reviewer.
 
-CRITICAL: 
-- Use DIFFERENTIAL DIAGNOSIS (multiple possibilities with percentages)
-- Keep response under 300 words
+Your role is to critically evaluate Agent 1's diagnostic reasoning.
 
-OPQRST ASSESSMENT (Required Fields):
+REASONING INSTRUCTION:
+Carefully analyze the symptoms, OPQRST assessment, and Agent 1 conclusions.
+Internally reason step-by-step before producing the final answer.
+Do NOT output the reasoning steps. Only return the requested structured output.
+
+CRITICAL RULE:
+Use ONLY the structured data below.
+Do NOT extract new information from conversation history.
+Do NOT reinterpret answers.
+
+OPQRST ASSESSMENT:
 {opqrst_summary}
 
-Symptoms Identified:
+SYMPTOMS:
 {state.symptoms_positive}
 
-Agent 1 Reasoning:
+AGENT 1 ANALYSIS:
 {state.agent1_summary}
 
-Conversation History:
-{history}
+STRUCTURED DATA (use exact values, do not change):
+Onset: {state.collected_fields.get('onset','unknown')}
+Provocation: {state.collected_fields.get('provocation','unknown')}
+Quality: {state.collected_fields.get('quality','unknown')}
+Region: {state.collected_fields.get('region','unknown')}
+Severity: {state.collected_fields.get('severity','unknown')}
+Time: {state.collected_fields.get('time','unknown')}
+Additional Symptoms: {state.symptoms_positive}
 
-DISEASE VALIDITY RULE:
-BASE RULE: ONLY CONSIDER THE SYMPTOMS THAT THE USER GAVE.
-- Only mention Ayurvedic diseases from classical literature
-- If no confident match, describe Dosha imbalance pattern
-- ENSURE OPQRST fields are properly considered in the analysis
-- MAKE SURE THAT THE DIAGNOSIS LOGICALLY FOLLOWS FROM THE SYMPTOMS AND OPQRST DATA. THEY SHOULD LOGICALLY ALIGN.
-Create the final report using this STRUCTURED format:
+STRICT CLINICAL RULES:
+1. Never invent symptoms
+2. If the patient denies a symptom, exclude it
+3. Use only explicitly stated symptoms
+4. Do not reinterpret answers
+5. Use ONLY the structured data below; do NOT extract new info from conversation history.
+
+STRUCTURED REASONING STEPS:
+STEP 1: Summarize confirmed symptoms
+STEP 2: Identify symptom patterns
+STEP 3: Generate differential diagnoses
+STEP 4: Map to Ayurvedic dosha imbalance
+STEP 5: Produce confidence score
+
+TASK:
+1. Evaluate whether the diagnoses logically match the symptoms
+2. Identify contradictions or missing information
+3. Generate refined differential diagnoses
+
+RULES:
+- Use Ayurvedic clinical logic
+- Ensure OPQRST data supports the diagnoses
+- If information is insufficient, lower the confidence score
+
+OUTPUT FORMAT:
 
 POSSIBLE CONDITIONS:
-1. [Condition] - [X]% confidence - [brief reason]
-2. [Condition] - [X]% confidence - [brief reason]
-3. [Condition] - [X]% confidence - [brief reason]
-
-OPQRST ASSESSMENT SUMMARY:
-- Onset: [value]
-- Provocation: [value]
-- Quality: [value]
-- Region: [value]
-- Severity: [value]
-- Time: [value]
+1. Condition - X% confidence - reason
+2. Condition - X% confidence - reason
+3. Condition - X% confidence - reason
 
 DOSHA ANALYSIS:
-- Dominant dosha: [Vata/Pitta/Kapha]
-- Imbalance pattern: [description]
+Dominant dosha:
+Imbalance explanation:
+
+CONFIDENCE SCORE:
+0.0 - 1.0
+
+MISSING INFORMATION:
+- item
+- item
 
 RECOMMENDATIONS:
-- [Diet]
-- [Lifestyle]
-
-SAFETY NOTE: [If urgent, state clearly]
-
-Return ONLY this structure.
+- diet
+- lifestyle
 """
 
-    return call_llm(prompt, SYSTEM_PROMPTS["validator"])
+    response = call_llm(prompt, SYSTEM_PROMPTS["validator"])
+    return response, 0.0  # Confidence calculated deterministically elsewhere
+
+
+def _extract_confidence(response_text):
+    """Deprecated: confidence now computed deterministically"""
+    return 0.0
+
+
+def generate_clarification_questions(state):
+    """
+    Agent 2:
+    When confidence < 0.7, generate 5-6 YES/NO questions to increase confidence.
+    Returns a list of questions.
+    """
+
+    history = state.get_conversation_history()
+    opqrst_summary = state.get_opqrst_summary() if hasattr(state, 'get_opqrst_summary') else ""
+
+    prompt = f"""
+You are a senior Ayurvedic diagnostic reviewer.
+
+The current diagnostic confidence is LOW.
+
+REASONING INSTRUCTION:
+Analyze the symptoms, OPQRST summary, and conversation history carefully.
+Internally reason step-by-step before producing the final answer.
+Do NOT output the reasoning steps. Only return the requested structured output.
+
+Use ONLY the structured data below.
+Do NOT extract new information from conversation history.
+
+KNOWN SYMPTOMS:
+{state.symptoms_positive}
+
+OPQRST SUMMARY:
+{opqrst_summary}
+
+STRUCTURED DATA (use exact values, do not change):
+Onset: {state.collected_fields.get('onset','unknown')}
+Provocation: {state.collected_fields.get('provocation','unknown')}
+Quality: {state.collected_fields.get('quality','unknown')}
+Region: {state.collected_fields.get('region','unknown')}
+Severity: {state.collected_fields.get('severity','unknown')}
+Time: {state.collected_fields.get('time','unknown')}
+Additional Symptoms: {state.symptoms_positive}
+
+TASK:
+Generate exactly 6 YES/NO questions.
+
+RULES:
+- Each question must help confirm or eliminate a diagnosis
+- Questions must be short
+- Focus on missing or ambiguous symptoms
+- Do not request information already answered in the conversation
+
+OUTPUT:
+
+QUESTIONS:
+1.
+2.
+3.
+4.
+5.
+6.
+"""
+
+    response = call_llm(prompt, SYSTEM_PROMPTS["validator"], temperature=0.5)
+    
+    # Parse questions from response
+    questions = []
+    for line in response.strip().split('\n'):
+        line = line.strip()
+        if line and len(line) > 0:
+            # Check if line starts with a number
+            parts = line.split('.', 1)
+            if len(parts) == 2 and parts[0].isdigit():
+                question = parts[1].strip()
+                if question and len(question) > 3:
+                    questions.append(question)
+    
+    return questions[:6]  # Return max 6 questions
