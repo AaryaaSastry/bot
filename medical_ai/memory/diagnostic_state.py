@@ -1,6 +1,10 @@
 from config import call_llm, SYSTEM_PROMPTS
+from medical_ai.medical_framework import RedFlagDetector
 
 class DiagnosticState:
+
+    # OPQRST fields that must be collected
+    OPQRST_FIELDS = ["onset", "provocation", "quality", "region", "severity", "time"]
 
     def __init__(self):
         self.symptoms_positive = []
@@ -16,6 +20,9 @@ class DiagnosticState:
         self.is_final_phase = False # Track if we are in Agent 3's final check
         self.agent1_summary = ""
         self.agent2_summary = ""
+        self.collected_fields = {} # Track OPQRST fields collected
+        self.red_flags_found = [] # Store detected red flags
+        self.opqrst_completed = False # Track if all OPQRST fields collected
 
 
     def record_interaction(self, question, answer):
@@ -26,6 +33,11 @@ class DiagnosticState:
         self.chat_history.append({"role": "ai", "content": question})
         self.chat_history.append({"role": "user", "content": answer})
 
+        # Check for red flags in user response
+        red_flags = RedFlagDetector.check_red_flags(answer)
+        if red_flags:
+            self.red_flags_found.extend(red_flags)
+        
         # Extract symptoms from all responses (not just initial)
         self._extract_symptoms(answer)
         
@@ -63,6 +75,7 @@ class DiagnosticState:
         Extract all medical symptoms from the following text.
         Return only a list of symptoms, one per line.
         Do not include any explanations or extra text.
+        Keep track of what the user has mentioned across multiple responses to build a comprehensive symptom list.
 
         Text: {text}
         """
@@ -73,4 +86,40 @@ class DiagnosticState:
         for symptom in symptoms:
             symptom = symptom.strip()
             if symptom:
-                self.symptoms_positive.append(symptom) 
+                self.symptoms_positive.append(symptom)
+
+    def record_opqrst_field(self, field, value):
+        """Record a collected OPQRST field"""
+        self.collected_fields[field] = value
+        # Check if all OPQRST fields are collected
+        self._check_opqrst_completion()
+
+    def _check_opqrst_completion(self):
+        """Check if all required OPQRST fields have been collected"""
+        collected_count = sum(1 for f in self.OPQRST_FIELDS if self.collected_fields.get(f) is not None)
+        if collected_count >= len(self.OPQRST_FIELDS):
+            self.opqrst_completed = True
+
+    def get_missing_opqrst_fields(self):
+        """Return list of missing OPQRST fields"""
+        return [f for f in self.OPQRST_FIELDS if self.collected_fields.get(f) is None]
+
+    def is_opqrst_complete(self):
+        """Check if all OPQRST fields are collected"""
+        return self.opqrst_completed
+
+    def get_opqrst_summary(self):
+        """Get formatted OPQRST summary for verification"""
+        summary = "\n=== OPQRST ASSESSMENT ===\n"
+        field_names = {
+            "onset": "Onset (When it started)",
+            "provocation": "Provocation (What makes it worse/better)",
+            "quality": "Quality (Description of symptom)",
+            "region": "Region (Location)",
+            "severity": "Severity (1-10 scale)",
+            "time": "Time (Duration/Frequency)"
+        }
+        for field in self.OPQRST_FIELDS:
+            value = self.collected_fields.get(field, "NOT COLLECTED")
+            summary += f"{field_names.get(field, field)}: {value}\n"
+        return summary 

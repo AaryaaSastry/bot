@@ -1,12 +1,18 @@
 
 from config import call_llm, SYSTEM_PROMPTS
+from medical_ai.medical_framework import (
+    RedFlagDetector, SymptomScorer, ProbabilisticDiagnosis,
+    ConfidenceCalculator, DiagnosisRefusal, TwoPhaseSystem
+)
+from medical_ai.memory.diagnostic_state import DiagnosticState
 
                 
 def is_health_related(user_input):
     """Check if user input is related to health/medical symptoms"""
     
     prompt = f"""
-You are a medical domain classifier. Your task is to determine if the user's input is related to health, medical symptoms, or Ayurvedic diagnostics.
+You are an expert in medical domain classification. Your task is to determine if the user's input is related to health, medical symptoms, or Ayurvedic diagnostics.
+Keep all the questions very small and precise. DO NOT ELABORATE THE QUESTIONS.
 
 User input: "{user_input}"
 
@@ -38,11 +44,11 @@ Respond with ONLY one word: HEALTHY or NOT_HEALTHY
 
 def get_domain_redirect_response():
     """Return a polite response asking user to discuss only health problems"""
-    return "I appreciate your question, but I'm specifically designed to help with health-related concerns and medical symptoms. Please tell me about any health problems or symptoms you're experiencing, and I'll be happy to assist you from an Ayurvedic perspective."
+    return "I appreciate your question, but I'm specifically designed to help with health-related concerns and medical symptoms."
 
 
 def ask_question(state):
-    """Agent 1: Professional Medical Interviewer"""
+    """Agent 1: Professional Ayurvedic Medical Interviewer"""
 
     # Phase 1: If diagnosis was rejected, ask clarification yes/no questions
     if getattr(state, "extra_questions_asked", False):
@@ -53,18 +59,15 @@ def ask_question(state):
             return get_domain_redirect_response()
 
         prompt = f"""
-You are Agent 1, a skilled, mindful,  ayurvedic medical interviewer.
+You are Agent 1, a skilled Ayurvedic medical interviewer.
 
+CRITICAL: Keep questions VERY SHORT (max 10 words).
 A previous diagnosis was rejected and you must clarify symptoms.
 
 Conversation History:
 {state.get_conversation_history()}
 
-Ask ONE clear YES/NO medical question that helps narrow the diagnosis.
-Ensure the question is relevant to the symptoms and has not been asked before.
-Ensure the questions dont have any ambigity and can be answered with a clear yes or no. Avoid asking multiple questions at once. Focus on one symptom or risk factor at a time.
-If there any big terminology, explain it in simple terms within the question, or use an example to clarify. For example, if asking about "dyspnea", you could say "Do you experience shortness of breath, especially when lying down or exerting yourself?"
-
+Ask ONE clear YES/NO question (SHORT).
 Return ONLY the question.
 """
         return call_llm(prompt, SYSTEM_PROMPTS["interviewer"]).strip()
@@ -82,25 +85,22 @@ Return ONLY the question.
             return get_domain_redirect_response()
 
         prompt = f"""
-You are Agent 1 (Medical Interviewer).
+You are Agent 1 (Ayurvedic Medical Interviewer).
+
+CRITICAL: Keep questions VERY SHORT (max 10 words).
 
 User response:
 {state.answers[-1]}
 
 Conversation History:
 {state.get_conversation_history()}
-BASE RULE:
-    - You are an ayurvedic medical interviewer, not a general chatbot. Always steer the conversation towards understanding the user's medical symptoms and concerns.
-    - You need to understand the user properly like an experienced ayurvedic doctor, and not just list the symptoms. You need to take decent analysis of the symptoms and their patterns, and not just list them.
-    - If the user asks about specific medications like paracetamol or any non-ayurvedic treatments, inform them that you can't advise on that as it is outside your ayurvedic expertise. Redirect them to describe their symptoms so you can help them from an ayurvedic perspective.
 
-If the user only greeted you (like "hi", "hello"), politely ask them to describe their medical symptoms.
-Greet the user if they greeted you, but also ask them to describe their symptoms. For example, you could say "Hello! I'm here to help you with your medical concerns. Could you please describe the symptoms you're experiencing?"
-If the user mentions their name, greet them by name and then ask about their symptoms that time only. For example, "Hello [Name]! I'm here to help you with your medical concerns. Could you please describe the symptoms you're experiencing?"
-If they mentioned symptoms, ask ONE relevant follow-up question to clarify them.
-Ensure the question is relevant to the symptoms and has not been asked before.
-Ensure the questions dont have any ambigity and can be answered with a clear yes or no. Avoid asking multiple questions at once. Focus on one symptom or risk factor at a time.
-If there any big terminology, explain it in simple terms within the question, or use an example to clarify. For example, if asking about "dyspnea", you could say "Do you experience shortness of breath, especially when lying down or exerting yourself?"
+BASE RULE:
+- Keep questions short and simple
+- Ask one question at a time
+- If user greeted you, greet back and ask about symptoms
+- If they mentioned symptoms, ask ONE short follow-up
+
 Return ONLY the question.
 """
         return call_llm(prompt, SYSTEM_PROMPTS["interviewer"]).strip()
@@ -119,7 +119,13 @@ Return ONLY the question.
         feedback_context = f"Supervisor feedback from Agent 2:\n{latest}"
 
     prompt = f"""
-You are Agent 1, an ayurvedic medical interviewer gathering diagnostic information and to fully understand the user.
+You are Agent 1, an ayurvedic medical interviewer gathering diagnostic information.
+
+CRITICAL RULES:
+1. Keep questions VERY SHORT (max 15-18 words)
+2. Avoid medical jargon
+3. Ask one question at a time only
+4. Mix yes/no with occasional open questions
 
 Known symptoms so far:
 {state.symptoms_positive}
@@ -130,50 +136,113 @@ Conversation History:
 {feedback_context}
 
 Your task:
-- Ask ONE new medical question that has NOT already been asked that aligns with the ayurvedic diagnostic approach and the chat history.
-- If the user has asked about non-Ayurvedic medications or treatments (for example, Paracetamol), politely inform them that you are an Ayurvedic diagnostic assistant and can only help with symptoms, then redirect the conversation to their symptoms.
-- Avoid repeating previous questions.
-- Focus on clarifying symptoms or identifying related symptoms.
-- Be kind and empathetic in your questioning, but maintain a professional tone.
-- Ensure the question is clear and can be answered with a specific response, ideally yes or no. Avoid asking multiple questions at once. Focus on one symptom or risk factor at a time.
-- If there any big terminology, explain it in simple terms within the question, or use an example to clarify. For example, if asking about "dyspnea", you could say "Do you experience shortness of breath, especially when lying down or exerting yourself?"
-- 
+- Ask ONE new question (SHORT, max 15-18 words)
+- Never repeat previous questions
+- Focus on: location, severity, duration, triggers
+- 20% of the time, ask an open question like "Can you describe more?"
 
-Return ONLY the question text.
+Return ONLY the question.
 """
 
     return call_llm(prompt, SYSTEM_PROMPTS["interviewer"]).strip()
 
 
 def generate_simple_diagnosis(state):
-    """Agent 1: Preliminary diagnostic reasoning"""
+    """Agent 1: Preliminary diagnostic reasoning with probabilistic diagnosis"""
 
+    # Calculate dosha scores
+    dosha_scores = SymptomScorer.calculate_dosha_scores(state.symptoms_positive)
+    dominant_dosha = SymptomScorer.get_dominant_dosha(dosha_scores)
+    
+    # Generate differential diagnoses
+    differential = ProbabilisticDiagnosis.generate_differential_diagnosis(state.symptoms_positive)
+    
+    # Calculate data completeness
+    symptom_category = TwoPhaseSystem.get_symptom_category(state.symptoms_positive)
+    required_fields = TwoPhaseSystem.MINIMUM_FIELDS.get(symptom_category, ["onset", "severity"])
+    collected_fields = {}
+    # Estimate from conversation
+    data_completeness = min(len(state.symptoms_positive) / len(required_fields), 1.0) if required_fields else 0
+    
+    # Include OPQRST data in the prompt
+    opqrst_context = state.get_opqrst_summary() if hasattr(state, 'get_opqrst_summary') else ""
+    
+    # Check if we have enough data for a realistic diagnosis
+    if data_completeness < 0.6 or len(state.symptoms_positive) < 2:
+        print("\n⚠️ Agent 1: I need more data to diagnose realistically. Continuing with more questions...\n")
+    
     prompt = f"""
-    You are Agent 1, performing a preliminary medical analysis.
-    Your task is to understand the User properly like an experienced ayurvedic doctor and generate a simple diagnostic hypothesis based on the symptoms identified so far.
-    You need to ensure u take decent analysis of the symptoms and their patterns, and not just list them.
+You are Agent 1, performing a preliminary medical analysis.
 
-    Known symptoms:
-    {state.symptoms_positive}
+IMPORTANT: 
+- Generate DIFFERENTIAL DIAGNOSES (multiple possibilities with probabilities)
+- Calculate HONEST confidence based on information available.
 
-    Conversation History:
-    {state.get_conversation_history()}
+Known symptoms:
+{state.symptoms_positive}
 
-    BASE RULE:
-    ALL THE DIAGNOSIS MUST BE BASED ON AYURVEDIC TEXTS. You should not make any diagnosis that doesn't align with ayurvedic principles. Focus on the doshas, imbalances, and patterns that could explain the symptoms.  
-    Generate a simple diagnostic hypothesis CONSIDERING the patterns of symptoms, their severity, and any relevant risk factors.
-    Focus on the most likely condition that could explain the symptoms, but you can also mention a few other possibilities if they are relevant.
-    Keep the diagnosis concise and focused on the most likely condition, but you can also mention a few other possibilities if they are relevant.
+{opqrst_context}
 
+Dosha Analysis (Vata/Pitta/Kapha):
+- Vata score: {dosha_scores.get('vata', 0)}
+- Pitta score: {dosha_scores.get('pitta', 0)}
+- Kapha score: {dosha_scores.get('kapha', 0)}
+- Dominant: {dominant_dosha}
 
-    Output format:
-    POSSIBLE CONDITION:
-    Name of condition.
+Data Completeness: {int(data_completeness * 100)}%
 
-    REASONING:
-    Explain how the symptoms support this condition in ayirvedic terms  ONLY , considering the doshas, imbalances, and patterns.
+Conversation History:
+{state.get_conversation_history()}
 
-    Return only this analysis.
-    """
+BASE RULE:
+ALL DIAGNOSIS MUST BE BASED ON AYURVEDIC PRINCIPLES.
+
+Output format:
+DIFFERENTIAL DIAGNOSES:
+1. [Condition name] - [probability]% - [brief reasoning]
+2. [Condition name] - [probability]% - [brief reasoning]
+3. [Condition name] - [probability]% - [brief reasoning]
+
+DOSHA IMBALANCE:
+Explain the dominant dosha pattern
+
+CONFIDENCE SCORE:
+Provide a score (0-1) - MUST BE LOW if data is incomplete
+
+Return only this analysis.
+"""
 
     return call_llm(prompt, SYSTEM_PROMPTS["interviewer"])
+
+
+def ask_opqrst_question(state):
+    """Ask OPQRST questions - must collect all 6 fields before proceeding"""
+    
+    # Get all OPQRST fields from DiagnosticState
+    opqrst_fields = DiagnosticState.OPQRST_FIELDS
+    
+    # Find first missing field
+    missing_fields = state.get_missing_opqrst_fields()
+    
+    if not missing_fields:
+        # All OPQRST fields collected
+        return None
+    
+    current_field = missing_fields[0]
+    
+    # OPQRST questions mapping
+    opqrst_questions = {
+        "onset": "When did this symptom start? (e.g., today, yesterday, a week ago)",
+        "provocation": "What makes it worse or better?",
+        "quality": "How would you describe the pain? (throbbing, sharp, dull, burning)",
+        "region": "Where exactly is the symptom located?",
+        "severity": "How severe is it on a scale of 1-10?",
+        "time": "How long does it last? / How often does it occur?"
+    }
+    
+    question = opqrst_questions.get(current_field, f"Please tell me about {current_field}")
+    
+    return {
+        "question": question,
+        "field": current_field
+    }

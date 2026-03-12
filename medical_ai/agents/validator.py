@@ -4,40 +4,35 @@ from config import call_llm, SYSTEM_PROMPTS
 def verify_questions(state):
     """
     Agent 2 (Supervisor):
-    Reviews Agent 1's questioning strategy and suggests improvements.
+    Reviews Agent 1's questioning strategy and enforces improvements.
     """
 
     history = state.get_conversation_history()
 
     prompt = f"""
-You are Agent 2, a highly experienced Senior Ayurvedic Medical Supervisor reviewing a junior doctor's interview.
+You are Agent 2, a Senior Ayurvedic Medical Supervisor.
 
-Your goal is to ensure the clinical reasoning is deep, accurate, and follows classical Ayurvedic diagnostic principles (Trividha Pariksha: Darshana, Sparshana, Prashna).
+CRITICAL: Your response must be MAX 200 WORDS.
 
-Tasks:
-1. Evaluate if Agent 1's questions are medically useful for an Ayurvedic diagnosis.
-2. Identify missing diagnostic signals (e.g., Agni status, Ama presence, Guna/Dosha patterns).
-3. Check for any clinical red flags or severity levels that been missed or downplayed.
-4. Suggest sophisticated questions that probe deeper into the root cause (Hetu) rather than just symptoms.
+Evaluate Agent 1's questioning strategy:
 
 Conversation History:
 {history}
 
-Evaluate the questioning strategy using the following format:
+Evaluate using this STRICT format:
 
-STRENGTHS:
-- Concise points on what Agent 1 did well.
+STRENGTHS: (max 2 points)
+- What was done well
 
-MISSING INFORMATION:
-- Crucial Ayurvedic indicators missing (e.g., digestion patterns, sleep quality, tongue/stool characteristics if relevant).
+MISSING: (max 3 items)
+- Crucial information still needed
 
-CLINICAL CONCERNS:
-- Any risks or symptoms requiring more urgent focus.
+ACTION REQUIRED:
+- If confidence < 0.6: "Ask more questions to gather sufficient data"
+- If symptoms unclear: "Clarify specific symptom details"
+- If red flags present: "URGENT: Check for safety concerns"
 
-SUGGESTED QUESTIONS:
-- Provide 3–5 sophisticated follow-up question ideas. Do not provide the exact wording, but the objective of the questions.
-
-Return ONLY this structured evaluation.
+Return ONLY this format.
 """
 
     return call_llm(prompt, SYSTEM_PROMPTS["validator"])
@@ -46,15 +41,23 @@ Return ONLY this structured evaluation.
 def create_final_summary(state):
     """
     Agent 2:
-    Generates a comprehensive clinical report based on Ayurvedic principles.
+    Generates a comprehensive clinical report with differential diagnoses.
     """
 
     history = state.get_conversation_history()
+    
+    # Get OPQRST summary if available
+    opqrst_summary = state.get_opqrst_summary() if hasattr(state, 'get_opqrst_summary') else ""
 
     prompt = f"""
 You are Agent 2, a Senior Ayurvedic Clinical Reviewer.
 
-Produce a detailed, professional Ayurvedic clinical report based on the interaction.
+CRITICAL: 
+- Use DIFFERENTIAL DIAGNOSIS (multiple possibilities with percentages)
+- Keep response under 300 words
+
+OPQRST ASSESSMENT (Required Fields):
+{opqrst_summary}
 
 Symptoms Identified:
 {state.symptoms_positive}
@@ -65,25 +68,38 @@ Agent 1 Reasoning:
 Conversation History:
 {history}
 
-Create the final report using this structure:
+DISEASE VALIDITY RULE:
+BASE RULE: ONLY CONSIDER THE SYMPTOMS THAT THE USER GAVE.
+- Only mention Ayurvedic diseases from classical literature
+- If no confident match, describe Dosha imbalance pattern
+- ENSURE OPQRST fields are properly considered in the analysis
+- MAKE SURE THAT THE DIAGNOSIS LOGICALLY FOLLOWS FROM THE SYMPTOMS AND OPQRST DATA. THEY SHOULD LOGICALLY ALIGN.
+Create the final report using this STRUCTURED format:
 
-CLINICAL DYNAMICS (Samprapti):
-- Describe the Dosha imbalance (Vata/Pitta/Kapha).
-- Describe the state of Agni (Mandagni, Vishamagni, etc.) and presence of Ama.
-- Explain how the symptoms relate to these imbalances.
+POSSIBLE CONDITIONS:
+1. [Condition] - [X]% confidence - [brief reason]
+2. [Condition] - [X]% confidence - [brief reason]
+3. [Condition] - [X]% confidence - [brief reason]
 
-PROBABLE AYURVEDIC CONDITIONS (Roga Vinishchaya):
-- Primary condition and 2 differential diagnoses with brief Ayurvedic justification.
+OPQRST ASSESSMENT SUMMARY:
+- Onset: [value]
+- Provocation: [value]
+- Quality: [value]
+- Region: [value]
+- Severity: [value]
+- Time: [value]
 
-SEVERITY & PROGNOSIS (Sadhya-Asadhyata):
-- LEVEL: Low / Moderate / High
-- Explanation based on symptom duration and intensity.
+DOSHA ANALYSIS:
+- Dominant dosha: [Vata/Pitta/Kapha]
+- Imbalance pattern: [description]
 
-RECOMMENDED GUIDELINES:
-- Immediate lifestyle or dietary suggestions (Ahar/Vihar) aligned with the suspected imbalance.
-- Advice on seeking professional Ayurvedic consultation.
+RECOMMENDATIONS:
+- [Diet]
+- [Lifestyle]
 
-Return ONLY the structured report.
+SAFETY NOTE: [If urgent, state clearly]
+
+Return ONLY this structure.
 """
 
     return call_llm(prompt, SYSTEM_PROMPTS["validator"])
