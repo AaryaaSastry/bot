@@ -20,9 +20,17 @@ class DiagnosticState:
         self.is_final_phase = False # Track if we are in Agent 3's final check
         self.agent1_summary = ""
         self.agent2_summary = ""
+        self.agent1_revision = ""  # revised diagnosis
         self.collected_fields = {} # Track OPQRST fields collected
         self.red_flags_found = [] # Store detected red flags
         self.opqrst_completed = False # Track if all OPQRST fields collected
+        self.contradictions_found = False  # flag set by contradiction detector
+        
+        # New Ayurvedic Diagnostic Evidence
+        self.tongue_description = ""
+        self.digestion_status = ""
+        self.sleep_pattern = ""
+        self.energy_level = ""
 
 
     def record_interaction(self, question, answer):
@@ -72,13 +80,20 @@ class DiagnosticState:
             return  # Skip symptom extraction for pure introductions
 
         prompt = f"""
-        Extract all medical symptoms from the following text.
-        Return only a list of symptoms, one per line.
-        Do not include any explanations or extra text.
-        Keep track of what the user has mentioned across multiple responses to build a comprehensive symptom list.
+Extract medical symptoms from the patient's text.
 
-        Text: {text}
-        """
+RULES:
+- Only extract actual symptoms mentioned by the user
+- Do not infer new symptoms
+- Do not add explanations
+- Use simple symptom names
+
+TEXT:
+{text}
+
+OUTPUT:
+List of symptoms, one per line.
+"""
 
         response = call_llm(prompt, SYSTEM_PROMPTS["symptom_extractor"])
         symptoms = response.strip().split('\n')

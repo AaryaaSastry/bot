@@ -212,6 +212,7 @@ CRITICAL RULE:
 Use ONLY the structured data below.
 Do NOT extract symptoms from conversation history.
 Do NOT reinterpret answers.
+Do NOT generate any confidence score. Confidence will be calculated by the system.
 
 Use ONLY the structured data below.
 Do NOT extract new information from conversation history.
@@ -250,6 +251,7 @@ STRICT CLINICAL RULES:
 2. If the patient denies a symptom, exclude it
 3. Use only explicitly stated symptoms
 4. Do not reinterpret answers
+5. Do NOT generate confidence; system will compute it.
 
 STRUCTURED REASONING STEPS:
 STEP 1: Summarize confirmed symptoms
@@ -267,6 +269,7 @@ RULES:
 - If data is incomplete, lower the confidence score
 - Provide differential diagnoses
 - First identify the biomedical symptom pattern, then map to Ayurvedic interpretation
+ - Reasoning must explicitly connect symptoms + OPQRST + diet/energy/sleep (if available) to dosha imbalance in 2-3 sentences.
 
 OUTPUT FORMAT:
 
@@ -282,6 +285,55 @@ CONFIDENCE SCORE:
 Number between 0.0 and 1.0
 """
 
+    return call_llm(prompt, SYSTEM_PROMPTS["interviewer"])
+
+
+def revise_diagnosis(state, critique):
+    """Agent 1: Revision step after Agent 2 critique"""
+    prompt = f"""
+You are Agent 1 revising your prior diagnosis.
+
+CRITICAL RULE:
+Use ONLY the structured data below.
+Do NOT extract symptoms from conversation history.
+Do NOT reinterpret answers.
+Do NOT introduce any new symptoms.
+If critique requests information that is not available, acknowledge the gap; do NOT fabricate answers.
+
+Structured Data:
+Onset: {state.collected_fields.get('onset','unknown')}
+Provocation: {state.collected_fields.get('provocation','unknown')}
+Quality: {state.collected_fields.get('quality','unknown')}
+Region: {state.collected_fields.get('region','unknown')}
+Severity: {state.collected_fields.get('severity','unknown')}
+Time: {state.collected_fields.get('time','unknown')}
+Additional Symptoms: {state.symptoms_positive}
+
+Prior Diagnosis:
+{state.agent1_summary}
+
+Agent 2 Critique:
+{critique}
+
+TASK:
+- Fix contradictions and missing items using only available data.
+- Do NOT add new symptoms.
+- Update differential diagnoses.
+- Keep output structured.
+
+OUTPUT (use exactly this structure):
+DIFFERENTIAL:
+1. Condition – probability
+2. Condition – probability
+3. Condition – probability
+
+DOSHA:
+Primary: <dosha>
+Secondary: <dosha or none>
+
+REASONING:
+<2 short sentences>
+"""
     return call_llm(prompt, SYSTEM_PROMPTS["interviewer"])
 
 

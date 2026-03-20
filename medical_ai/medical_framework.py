@@ -328,40 +328,100 @@ class ConfidenceCalculator:
     def stable_confidence(state):
         """
         Deterministic confidence (0-1) using observable evidence only.
-        Buckets (0.20 each):
-        - OPQRST complete
-        - Trigger/provocation identified
-        - Symptom pattern match (>=2 symptoms)
-        - Agent 1 & Agent 2 produced summaries (agreement proxy)
-        - No contradictions flagged
+        Components are explicitly weighted for transparency.
+        
+        Formula:
+        score = (OPQRST_completion * 0.3) 
+              + (Symptom_Consistency * 0.25)
+              + (Ayurvedic_Evidence * 0.2)
+              + (Agent_Agreement * 0.1)
+              - (Contradiction_Penalty * 0.15)
         """
         score = 0.0
 
-        # OPQRST completeness
+        # 1. OPQRST completeness (0.30 weighted)
+        # Higher weight as it's the foundation of clinical history
         opqrst_fields = getattr(state, "OPQRST_FIELDS", ["onset", "provocation", "quality", "region", "severity", "time"])
-        filled = sum(1 for f in opqrst_fields if getattr(state, "collected_fields", {}).get(f))
-        if filled == len(opqrst_fields):
-            score += 0.20
+        filled_count = sum(1 for f in opqrst_fields if getattr(state, "collected_fields", {}).get(f))
+        opqrst_score = (filled_count / len(opqrst_fields)) * 0.30
+        score += opqrst_score
 
-        # Trigger / provocation
-        if getattr(state, "collected_fields", {}).get("provocation"):
-            score += 0.20
+        # 2. Symptom pattern match (>=2 symptoms) (0.25 weighted)
+        # Verifies that enough discrete symptoms were identified
+        num_pos = len(getattr(state, "symptoms_positive", []))
+        if num_pos >= 3:
+            score += 0.25
+        elif num_pos >= 2:
+            score += 0.15
+        elif num_pos == 1:
+            score += 0.05
 
-        # Symptom pattern (at least two symptoms)
-        if len(getattr(state, "symptoms_positive", [])) >= 2:
+        # 3. High-Value Ayurvedic Evidence (0.20 weighted)
+        # Checks for multi-modal Ayurvedic markers
+        ayurvedic_evidence_count = 0
+        if getattr(state, "tongue_description", ""): ayurvedic_evidence_count += 1
+        if getattr(state, "digestion_status", ""): ayurvedic_evidence_count += 1
+        if getattr(state, "sleep_pattern", ""): ayurvedic_evidence_count += 1
+        
+        if ayurvedic_evidence_count >= 2:
             score += 0.20
+        elif ayurvedic_evidence_count == 1:
+            score += 0.10
 
-        # Agent summaries present (proxy for agreement)
+        # 4. Agent Agreement / Summary Generation (0.10 weighted)
+        # Presence of multi-agent summaries
         if getattr(state, "agent1_summary", "") and getattr(state, "agent2_summary", ""):
-            score += 0.20
+            score += 0.10
 
-        # No contradictions flagged
+        # 5. Contradiction Penalty (-0.15 weighted)
+        # Actively reduces confidence if contradictions are detected
         contradictions = getattr(state, "contradictions_found", False)
-        if not contradictions:
-            score += 0.20
+        if contradictions:
+            score -= 0.15
 
-        return round(min(score, 1.0), 2)
+        return round(max(0.0, min(score, 1.0)), 2)
 
+
+# ============================================================================
+# 10. CONTRADICTION DETECTION (simple deterministic checks)
+# ============================================================================
+
+def detect_contradictions(state):
+    """
+    Simple rule-based contradiction detector to reduce hallucinations.
+    Returns a list of contradiction strings and sets state.contradictions_found.
+    """
+    contradictions = []
+
+    # Example: migraine suggested but nausea denied
+    diagnosis_texts = [
+        getattr(state, "agent1_summary", "").lower(),
+        getattr(state, "agent1_revision", "").lower(),
+        getattr(state, "agent2_summary", "").lower(),
+    ]
+    denied = set(getattr(state, "symptoms_negative", []))
+    denied_lower = {s.lower() for s in denied}
+
+    if any("migraine" in d for d in diagnosis_texts) and any("nausea" in n for n in denied_lower):
+        contradictions.append("Migraine suggested but nausea was denied.")
+
+    # Severity mismatch: if severity recorded <=3 but diagnosis claims severe/10/10
+    severity = getattr(state, "collected_fields", {}).get("severity")
+    if severity:
+        try:
+            sev_val = float(str(severity))
+            if sev_val <= 3 and any("10/10" in d or "severe" in d for d in diagnosis_texts):
+                contradictions.append("Diagnosis labels pain as severe but recorded severity is low.")
+        except Exception:
+            pass
+
+    state.contradictions_found = len(contradictions) > 0
+    return contradictions
+
+
+# ============================================================================
+# 8. REFUSAL FRAMEWORK
+# ============================================================================
 
 # ============================================================================
 # 7. KNOWLEDGE LAYER - Condition Rules
@@ -421,6 +481,19 @@ class KnowledgeLayer:
 
 class DiagnosisRefusal:
     """Handle insufficient information scenarios"""
+    
+    @staticmethod
+    def should_refuse_diagnosis(confidence_threshold, current_confidence, data_completeness):
+        """Determine if diagnosis should be refused"""
+        return current_confidence < confidence_threshold or data_completeness < 0.5
+    
+    @staticmethod
+    def get_refusal_message():
+        """Message when diagnosis cannot be made"""
+        return (
+            "Insufficient information for a confident diagnosis. "
+            "Please answer a few more questions to help me understand your symptoms better."
+        )
     
     @staticmethod
     def should_refuse_diagnosis(confidence_threshold, current_confidence, data_completeness):

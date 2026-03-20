@@ -19,6 +19,9 @@ Evaluate Agent 1's questioning strategy:
 Conversation History:
 {history}
 
+DATA SUFFICIENCY RULE:
+If Symptoms + all OPQRST fields are present, consider data sufficient and DO NOT ask for more questions.
+
 Evaluate using this STRICT format:
 
 STRENGTHS: (max 2 points)
@@ -62,6 +65,13 @@ CRITICAL RULE:
 Use ONLY the structured data below.
 Do NOT extract new information from conversation history.
 Do NOT reinterpret answers.
+Do NOT generate confidence scores. Confidence is calculated by the system.
+Do NOT claim something is missing if it exists in structured data.
+DATA SUFFICIENCY RULE:
+If the following are present, consider data sufficient and do NOT request more questions:
+- Symptoms
+- All OPQRST fields
+- Diet, Digestion, Sleep, Energy level, Tongue description (if provided)
 
 OPQRST ASSESSMENT:
 {opqrst_summary}
@@ -87,6 +97,7 @@ STRICT CLINICAL RULES:
 3. Use only explicitly stated symptoms
 4. Do not reinterpret answers
 5. Use ONLY the structured data below; do NOT extract new info from conversation history.
+ 6. Do NOT output confidence.
 
 STRUCTURED REASONING STEPS:
 STEP 1: Summarize confirmed symptoms
@@ -117,7 +128,7 @@ Dominant dosha:
 Imbalance explanation:
 
 CONFIDENCE SCORE:
-0.0 - 1.0
+(System will add)
 
 MISSING INFORMATION:
 - item
@@ -183,6 +194,7 @@ RULES:
 - Questions must be short
 - Focus on missing or ambiguous symptoms
 - Do not request information already answered in the conversation
+- Apply DATA SUFFICIENCY RULE: If Symptoms AND all OPQRST fields are present, skip generating questions.
 
 OUTPUT:
 

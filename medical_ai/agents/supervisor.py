@@ -77,7 +77,7 @@ OPQRST SUMMARY:
 {opqrst_summary}
 
 AGENT 1 ANALYSIS:
-{state.agent1_summary}
+{state.agent1_revision or state.agent1_summary}
 
 AGENT 2 REPORT:
 {state.agent2_summary}
